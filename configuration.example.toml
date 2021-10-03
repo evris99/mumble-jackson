@@ -1,0 +1,20 @@
+# The Mumble server's address
+address = "localhost"
+
+# The Mumble server's port
+port = 64738
+
+# The username of the bot
+username = "MusicBot"
+
+# The prefix for the commands
+command_prefix = "!"
+
+# Whether to check the servers certificate
+verify_server_certificate = false
+
+# Whether to use a cerificate and where are the pem files
+[certificate]
+use_certificate = true
+certificate_file_path = "./certs/cert.pem"
+key_file_path = "./certs/key.pem"
