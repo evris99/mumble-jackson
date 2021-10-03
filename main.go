@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/BurntSushi/toml"
 	"github.com/evris99/mumble-music-bot/player"
@@ -69,10 +68,8 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	// To not terminate
-	block := new(sync.Mutex)
-	block.Lock()
-	block.Lock()
+	// Block forever
+	select {}
 }
 
 // Loads the config from the path argument and returns the config

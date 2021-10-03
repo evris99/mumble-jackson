@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"net/url"
+	"sync"
 
 	"github.com/kkdai/youtube/v2"
 	"layeh.com/gumble/gumble"
@@ -25,21 +26,21 @@ type Player struct {
 	streams       chan *gumbleffmpeg.Stream
 	currentStream *gumbleffmpeg.Stream
 	playing       bool
-	finished      chan int
-	skip          chan int
-	stop          chan int
+	skip          chan bool
+	stop          chan bool
 	volume        float32
+	streamMutex   *sync.Mutex
 }
 
 // Creates and returns a Player instance
 func New() *Player {
 	return &Player{
-		streams:  make(chan *gumbleffmpeg.Stream, MaxPlaylistSize),
-		playing:  false,
-		finished: make(chan int),
-		skip:     make(chan int),
-		stop:     make(chan int),
-		volume:   0.6,
+		streams:     make(chan *gumbleffmpeg.Stream, MaxPlaylistSize),
+		playing:     false,
+		skip:        make(chan bool),
+		stop:        make(chan bool),
+		volume:      0.6,
+		streamMutex: new(sync.Mutex),
 	}
 }
 
@@ -62,9 +63,12 @@ func (p *Player) SetVolume(vol int) error {
 	}
 
 	p.volume = float32(vol) / 100
+
+	p.streamMutex.Lock()
 	if p.currentStream != nil {
 		p.currentStream.Volume = p.volume
 	}
+	p.streamMutex.Unlock()
 
 	return nil
 }
@@ -80,7 +84,7 @@ func (p *Player) Skip() error {
 		return nil
 	}
 
-	p.skip <- 1
+	p.skip <- true
 	return nil
 }
 
@@ -106,7 +110,7 @@ func (p *Player) Stop() error {
 	}
 
 	p.playing = false
-	p.stop <- 1
+	p.stop <- true
 	return nil
 }
 
@@ -116,17 +120,25 @@ func (p *Player) startPlaylist(c *gumble.Client) {
 	stop := false
 
 	for p.currentStream = range p.streams {
-		p.finished = make(chan int)
+		finished := make(chan bool)
+
+		p.streamMutex.Lock()
 		p.currentStream.Volume = p.volume
-		go playStream(p.currentStream, p.finished)
+		p.streamMutex.Unlock()
+
+		go playStream(p.currentStream, finished)
 
 		select {
 		case <-p.stop:
+			p.streamMutex.Lock()
 			p.currentStream.Stop()
+			p.streamMutex.Unlock()
 			stop = true
 		case <-p.skip:
+			p.streamMutex.Lock()
 			p.currentStream.Stop()
-		case <-p.finished:
+			p.streamMutex.Unlock()
+		case <-finished:
 		}
 
 		if stop {
@@ -137,14 +149,14 @@ func (p *Player) startPlaylist(c *gumble.Client) {
 
 // Receives an audio stream and a channel. It plays the stream
 // and send a message to the channel when it is finished.
-func playStream(s *gumbleffmpeg.Stream, finished chan int) {
+func playStream(s *gumbleffmpeg.Stream, finished chan bool) {
 	err := s.Play()
 	if err != nil {
 		log.Fatalln(err)
 	}
 
 	s.Wait()
-	finished <- 1
+	finished <- true
 }
 
 // Receives a URL and returns an audio stream or an error
