@@ -26,6 +26,14 @@ var (
 	ErrNoURLFound = errors.New("no url source found")
 )
 
+const helpmessage string = `<h2>Usage</h2><br>
+start: Starts the playlist.<br>
+stop: Stops the playlist.<br>
+add $url: Add the youtube URL to playlist.<br>
+skip: Skips a track from the playlist.<br>
+vol $num: Sets the volume to the specified number. The number must be between 0-100.<br>
+help: Shows this message.<br>`
+
 // The configuration for the TLS certificates
 type CertConfig struct {
 	UseCertificate bool   `toml:"use_certificate"`
@@ -138,6 +146,8 @@ func handleMessage(player *player.Player, prefix string) func(e *gumble.TextMess
 			response, err = onSkip(player)
 		case "vol":
 			response, err = onVolume(player, words)
+		case "help":
+			response, err = helpmessage, nil
 		}
 
 		if handleError(err, e.Client) {
