@@ -27,12 +27,12 @@ var (
 )
 
 const helpmessage string = `<h2>Usage</h2><br>
-start: Starts the playlist.<br>
-stop: Stops the playlist.<br>
-add $url: Add the youtube URL to playlist.<br>
-skip: Skips a track from the playlist.<br>
-vol $num: Sets the volume to the specified number. The number must be between 0-100.<br>
-help: Shows this message.<br>`
+<b>start</b>: Starts the playlist.<br>
+<b>stop</b>: Stops the playlist.<br>
+<b>add $URL</b>: Add the youtube URL to playlist.<br>
+<b>skip</b>: Skips a track from the playlist.<br>
+<b>vol $NUM</b>: Sets the volume to the specified number. The number must be between 0-100.<br>
+<b>help</b>: Shows this message.<br>`
 
 // The configuration for the TLS certificates
 type CertConfig struct {
@@ -146,6 +146,8 @@ func handleMessage(player *player.Player, prefix string) func(e *gumble.TextMess
 			response, err = onSkip(player)
 		case "vol":
 			response, err = onVolume(player, words)
+		case "clear":
+			response, err = onClear(player), nil
 		case "help":
 			response, err = helpmessage, nil
 		}
@@ -209,6 +211,11 @@ func onSkip(p *player.Player) (string, error) {
 	return "Song skipped", nil
 }
 
+func onClear(p *player.Player) string {
+	p.ClearQueue()
+	return "Playlist cleared"
+}
+
 // Sets the volume and returns the corresponding answer or an error
 func onVolume(p *player.Player, words []string) (string, error) {
 	if len(words) < 2 {
@@ -220,7 +227,7 @@ func onVolume(p *player.Player, words []string) (string, error) {
 		return "", err
 	}
 
-	p.SetVolume(value)
+	err = p.SetVolume(value)
 	return fmt.Sprintf("Volume set to %d", value), err
 }
 

@@ -55,6 +55,16 @@ func (p *Player) AddToQueue(c *gumble.Client, url *url.URL) error {
 	return nil
 }
 
+func (p *Player) ClearQueue() {
+	for {
+		select {
+		case <-p.streams:
+		default:
+			return
+		}
+	}
+}
+
 // Receives an integer between 0-100 and sets the volume to that value.
 // Returns an error if the number is not in the correct range
 func (p *Player) SetVolume(vol int) error {
