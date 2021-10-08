@@ -63,6 +63,7 @@ func main() {
 	player := player.New()
 	gumbleConf.Attach(gumbleutil.Listener{
 		TextMessage: handleMessage(player, config.Prefix),
+		Disconnect:  handleDisconnect,
 	})
 
 	tlsConf, tlsErr := getTLSConfig(*config)
@@ -156,6 +157,22 @@ func handleMessage(player *player.Player, prefix string) func(e *gumble.TextMess
 			e.Client.Self.Channel.Send(response, false)
 		}
 	}
+}
+
+func handleDisconnect(e *gumble.DisconnectEvent) {
+	var reason string
+	switch e.Type {
+	case gumble.DisconnectError:
+		reason = "connection error"
+	case gumble.DisconnectBanned:
+		reason = "user banned"
+	case gumble.DisconnectKicked:
+		reason = "user kicked"
+	case gumble.DisconnectUser:
+		reason = "user disconnect"
+	}
+
+	log.Fatalf("Disconnect reason is %s: %s\n", reason, e.String)
 }
 
 // Starts the playlist and returns the corresponding answer or an error
