@@ -13,6 +13,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/evris99/mumble-music-bot/player"
+	"github.com/evris99/mumble-music-bot/youtube_search"
 	"layeh.com/gumble/gumble"
 	"layeh.com/gumble/gumbleutil"
 	_ "layeh.com/gumble/opus"
@@ -20,19 +21,21 @@ import (
 )
 
 var (
-	ErrCertFile   = errors.New("cert file missing")
-	ErrKeyFile    = errors.New("key file missing")
-	ErrTooFewArgs = errors.New("too few arguments in command")
-	ErrNoURLFound = errors.New("no url source found")
+	ErrCertFile        = errors.New("cert file missing")
+	ErrKeyFile         = errors.New("key file missing")
+	ErrTooFewArgs      = errors.New("too few arguments in command")
+	ErrNoURLFound      = errors.New("no url source found")
+	ErrNoYoutubeAPIKey = errors.New("cannot search without API key")
 )
 
 const helpmessage string = `<h2>Usage</h2><br>
-<b>start</b>: Starts the playlist.<br>
-<b>stop</b>: Stops the playlist.<br>
-<b>add $URL</b>: Add the youtube URL to playlist.<br>
-<b>skip</b>: Skips a track from the playlist.<br>
-<b>vol $NUM</b>: Sets the volume to the specified number. The number must be between 0-100.<br>
-<b>help</b>: Shows this message.<br>`
+<b>%[1]sstart</b>: Starts the playlist.<br>
+<b>%[1]sstop</b>: Stops the playlist.<br>
+<b>%[1]sadd $URL</b>: Add the youtube URL to the playlist.<br>
+<b>%[1]ssearch $QUERY</b>: Searches and adds the song to the playlist.<br>
+<b>%[1]sskip</b>: Skips a track from the playlist.<br>
+<b>%[1]svol $NUM</b>: Sets the volume to the specified number. The number must be between 0-100.<br>
+<b>%[1]shelp</b>: Shows this message.<br>`
 
 // The configuration for the TLS certificates
 type CertConfig struct {
@@ -49,6 +52,7 @@ type Config struct {
 	Prefix            string      `toml:"command_prefix"`
 	VerifyCertificate bool        `toml:"verify_server_certificate"`
 	CertConf          *CertConfig `toml:"certificate"`
+	YoutubeAPIKey     string      `toml:"youtube_api_key"`
 }
 
 func main() {
@@ -62,7 +66,7 @@ func main() {
 
 	player := player.New()
 	gumbleConf.Attach(gumbleutil.Listener{
-		TextMessage: handleMessage(player, config.Prefix),
+		TextMessage: handleMessage(player, config),
 		Disconnect:  handleDisconnect,
 	})
 
@@ -88,6 +92,7 @@ func loadConfig(path string) *Config {
 		Address:           "localhost",
 		Prefix:            "!",
 		Port:              64738,
+		YoutubeAPIKey:     "",
 		VerifyCertificate: false,
 		CertConf:          new(CertConfig),
 	}
@@ -126,21 +131,23 @@ func getTLSConfig(c Config) (*tls.Config, error) {
 }
 
 // Returns a function to handle the text message event
-func handleMessage(player *player.Player, prefix string) func(e *gumble.TextMessageEvent) {
+func handleMessage(player *player.Player, config *Config) func(e *gumble.TextMessageEvent) {
 	return func(e *gumble.TextMessageEvent) {
-		if !strings.HasPrefix(e.Message, prefix) {
+		if !strings.HasPrefix(e.Message, config.Prefix) {
 			return
 		}
 
 		var response string
 		var err error
-		words := strings.Fields(strings.TrimPrefix(e.Message, prefix))
+		words := strings.Fields(strings.TrimPrefix(e.Message, config.Prefix))
 
 		switch words[0] {
 		case "start":
 			response, err = onStart(player, e.Client)
 		case "add":
 			response, err = onAdd(player, e.Client, words)
+		case "search":
+			response, err = onSearch(player, e.Client, words, config)
 		case "stop":
 			response, err = onStop(player)
 		case "skip":
@@ -150,7 +157,8 @@ func handleMessage(player *player.Player, prefix string) func(e *gumble.TextMess
 		case "clear":
 			response, err = onClear(player), nil
 		case "help":
-			response, err = helpmessage, nil
+			// Adds the prefix to all the commands shown
+			response, err = fmt.Sprintf(helpmessage, config.Prefix), nil
 		}
 
 		if handleError(err, e.Client) {
@@ -219,6 +227,24 @@ func onStop(p *player.Player) (string, error) {
 	return "Playlist stopped", nil
 }
 
+func onSearch(p *player.Player, c *gumble.Client, words []string, config *Config) (string, error) {
+	if config.YoutubeAPIKey == "" {
+		return "", ErrNoYoutubeAPIKey
+	}
+
+	if len(words) < 2 {
+		return "", ErrTooFewArgs
+	}
+
+	videoURL, err := p.SearchAndAdd(c, config.YoutubeAPIKey, strings.Join(words, " "))
+	if err != nil {
+		return "", err
+	}
+
+	response := fmt.Sprintf("Added <a href=\"%s\">%s</a> to playlist", videoURL, videoURL)
+	return response, nil
+}
+
 // Skips the song and returns the corresponding answer or an error
 func onSkip(p *player.Player) (string, error) {
 	if err := p.Skip(); err != nil {
@@ -271,6 +297,12 @@ func handleError(err error, c *gumble.Client) bool {
 		response = "Too few arguments given"
 	case errors.Is(err, ErrNoURLFound):
 		response = "Could not find URL"
+	case errors.Is(err, youtube_search.ErrEmptyResponse):
+		response = "No matching results found"
+	case errors.Is(err, youtube_search.ErrRequest):
+		response = "Could not get search results from Youtube"
+	case errors.Is(err, ErrNoYoutubeAPIKey):
+		response = "The bot has not been configured to search youtube. Add a Youtube API key in the config."
 	default:
 		response = err.Error()
 	}

@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"sync"
 
+	"github.com/evris99/mumble-music-bot/youtube_search"
 	"github.com/kkdai/youtube/v2"
 	"layeh.com/gumble/gumble"
 	"layeh.com/gumble/gumbleffmpeg"
@@ -122,6 +123,21 @@ func (p *Player) Stop() error {
 	p.playing = false
 	p.stop <- true
 	return nil
+}
+
+func (p *Player) SearchAndAdd(c *gumble.Client, apiKey, query string) (string, error) {
+	rawURL, err := youtube_search.Search(query, apiKey)
+	if err != nil {
+		return "", err
+	}
+
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+	p.AddToQueue(c, parsedURL)
+
+	return rawURL, nil
 }
 
 // Start playing song from the playlist

@@ -12,7 +12,7 @@ require (
 require (
 	github.com/bitly/go-simplejson v0.5.0 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
-	golang.org/x/net v0.0.0-20210614182718-04defd469f4e // indirect
+	golang.org/x/net v0.0.0-20211007125505-59d4e928ea9d // indirect
 	google.golang.org/protobuf v1.26.0 // indirect
 	layeh.com/gopus v0.0.0-20161224163843-0ebf989153aa // indirect
 )
