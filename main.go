@@ -34,6 +34,7 @@ const helpmessage string = `<h2>Usage</h2><br>
 <b>%[1]sadd $URL</b>: Add the youtube URL to the playlist.<br>
 <b>%[1]ssearch $QUERY</b>: Searches and adds the song to the playlist.<br>
 <b>%[1]sskip</b>: Skips a track from the playlist.<br>
+<b>%[1]sclear</b>: Clears the playlist.<br>
 <b>%[1]svol $NUM</b>: Sets the volume to the specified number. The number must be between 0-100.<br>
 <b>%[1]shelp</b>: Shows this message.<br>`
 
@@ -236,7 +237,7 @@ func onSearch(p *player.Player, c *gumble.Client, words []string, config *Config
 		return "", ErrTooFewArgs
 	}
 
-	videoURL, err := p.SearchAndAdd(c, config.YoutubeAPIKey, strings.Join(words, " "))
+	videoURL, err := p.SearchAndAdd(c, config.YoutubeAPIKey, strings.Join(words[1:], " "))
 	if err != nil {
 		return "", err
 	}
