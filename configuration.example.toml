@@ -13,6 +13,10 @@ command_prefix = "!"
 # Whether to check the server's certificate
 verify_server_certificate = false
 
+# The starting volume of the bot
+# Must be between 0-100
+default_volume = 60
+
 # Set this to your Google Cloud API key to enable searching youtube
 # For information about getting an API key visit https://developers.google.com/youtube/v3/docs
 youtube_api_key = ""
