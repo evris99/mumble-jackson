@@ -303,14 +303,18 @@ func handleError(err error, c *gumble.Client) bool {
 		response = "Could not find correct format for song"
 	case errors.Is(err, player.ErrVolumeRange):
 		response = "The volume must be between 0 and 100"
-	case errors.Is(err, ErrTooFewArgs):
-		response = "Too few arguments given"
-	case errors.Is(err, ErrNoURLFound):
-		response = "Could not find URL"
+	case errors.Is(err, player.ErrThumbDownload):
+		response = "Could not download the track's thumbnail"
+	case errors.Is(err, player.ErrThumbNoURL):
+		response = "Did not find the thumbnail URL."
 	case errors.Is(err, youtube_search.ErrEmptyResponse):
 		response = "No matching results found"
 	case errors.Is(err, youtube_search.ErrRequest):
 		response = "Could not get search results from Youtube"
+	case errors.Is(err, ErrTooFewArgs):
+		response = "Too few arguments given"
+	case errors.Is(err, ErrNoURLFound):
+		response = "Could not find URL"
 	case errors.Is(err, ErrNoYoutubeAPIKey):
 		response = "The bot has not been configured to search youtube. Add a Youtube API key in the config."
 	default:
