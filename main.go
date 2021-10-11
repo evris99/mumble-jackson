@@ -54,6 +54,7 @@ type Config struct {
 	VerifyCertificate bool        `toml:"verify_server_certificate"`
 	CertConf          *CertConfig `toml:"certificate"`
 	YoutubeAPIKey     string      `toml:"youtube_api_key"`
+	DefaultVolume     uint8       `toml:"default_volume"`
 }
 
 func main() {
@@ -65,7 +66,7 @@ func main() {
 	gumbleConf := gumble.NewConfig()
 	gumbleConf.Username = config.Username
 
-	player := player.New()
+	player := player.New(config.DefaultVolume)
 	gumbleConf.Attach(gumbleutil.Listener{
 		TextMessage: handleMessage(player, config),
 		Disconnect:  handleDisconnect,
@@ -96,11 +97,16 @@ func loadConfig(path string) *Config {
 		YoutubeAPIKey:     "",
 		VerifyCertificate: false,
 		CertConf:          new(CertConfig),
+		DefaultVolume:     60,
 	}
 
 	_, err := toml.DecodeFile(path, conf)
 	if err != nil {
 		log.Fatalln(err)
+	}
+
+	if conf.DefaultVolume > 100 {
+		log.Fatalln("The volume must be between 0 and 100")
 	}
 
 	return conf

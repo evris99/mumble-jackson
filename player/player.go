@@ -93,13 +93,13 @@ type Player struct {
 }
 
 // Creates and returns a Player instance
-func New() *Player {
+func New(default_volume uint8) *Player {
 	return &Player{
 		tracks:      make(chan *Track, MaxPlaylistSize),
 		playing:     false,
 		skip:        make(chan bool),
 		stop:        make(chan bool),
-		volume:      0.6,
+		volume:      float32(default_volume) / 100,
 		streamMutex: new(sync.Mutex),
 	}
 }
