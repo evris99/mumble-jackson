@@ -26,6 +26,7 @@ type SearchResponse struct {
 	Items []Item `json:"items"`
 }
 
+// Returns the URL of the first search result from Youtube based on the query
 func Search(query, apiKey string) (string, error) {
 	url, err := getApiURL(query, apiKey)
 	if err != nil {
@@ -50,6 +51,7 @@ func Search(query, apiKey string) (string, error) {
 	return fmt.Sprintf("https://www.youtube.com/watch?v=%s", id), nil
 }
 
+// Returns the url for making the search request based on the query and the API key
 func getApiURL(query, apiKey string) (string, error) {
 	queryParams := make(url.Values, 4)
 	queryParams.Add("part", "id")
@@ -66,6 +68,7 @@ func getApiURL(query, apiKey string) (string, error) {
 	return u.String(), nil
 }
 
+// Extracts and returns the video ID from the http response
 func extractID(body io.ReadCloser) (string, error) {
 	decoder := json.NewDecoder(body)
 	searchRes := new(SearchResponse)

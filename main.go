@@ -162,12 +162,15 @@ func handleMessage(player *player.Player, config *Config) func(e *gumble.TextMes
 			response, err = fmt.Sprintf(helpmessage, config.Prefix), nil
 		}
 
+		fmt.Print(response)
 		if handleError(err, e.Client) {
 			e.Client.Self.Channel.Send(response, false)
 		}
 	}
 }
 
+// Runs when the client is disconnected
+// It just logs and exits
 func handleDisconnect(e *gumble.DisconnectEvent) {
 	var reason string
 	switch e.Type {
@@ -211,12 +214,12 @@ func onAdd(p *player.Player, c *gumble.Client, words []string) (string, error) {
 		return "", err
 	}
 
-	if err = p.AddToQueue(c, url); err != nil {
+	track, err := p.AddToQueue(c, url)
+	if err != nil {
 		return "", err
 	}
 
-	response := fmt.Sprintf("Added <a href=\"%s\">%s</a> to playlist", url.String(), url.String())
-	return response, nil
+	return getAdditionResponse(track), nil
 }
 
 // Stops the playlist and returns the corresponding answer or an error
@@ -228,6 +231,7 @@ func onStop(p *player.Player) (string, error) {
 	return "Playlist stopped", nil
 }
 
+// Adds the track matching the search to the playlist and returns the corresponding answer or a error
 func onSearch(p *player.Player, c *gumble.Client, words []string, config *Config) (string, error) {
 	if config.YoutubeAPIKey == "" {
 		return "", ErrNoYoutubeAPIKey
@@ -237,13 +241,12 @@ func onSearch(p *player.Player, c *gumble.Client, words []string, config *Config
 		return "", ErrTooFewArgs
 	}
 
-	videoURL, err := p.SearchAndAdd(c, config.YoutubeAPIKey, strings.Join(words[1:], " "))
+	track, err := p.SearchAndAdd(c, config.YoutubeAPIKey, strings.Join(words[1:], " "))
 	if err != nil {
 		return "", err
 	}
 
-	response := fmt.Sprintf("Added <a href=\"%s\">%s</a> to playlist", videoURL, videoURL)
-	return response, nil
+	return getAdditionResponse(track), nil
 }
 
 // Skips the song and returns the corresponding answer or an error
@@ -310,4 +313,9 @@ func handleError(err error, c *gumble.Client) bool {
 
 	c.Self.Channel.Send(response, false)
 	return false
+}
+
+// Concats and returns the added string and the track message
+func getAdditionResponse(t *player.Track) string {
+	return fmt.Sprintf("Added:%s", t.GetMessage())
 }

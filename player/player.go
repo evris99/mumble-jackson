@@ -1,8 +1,13 @@
 package player
 
 import (
+	"bytes"
+	"encoding/base64"
 	"errors"
+	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"net/url"
 	"sync"
 
@@ -16,27 +21,81 @@ import (
 const MaxPlaylistSize = 100
 
 var (
-	ErrNoFormat    = errors.New("no format found")
-	ErrEmpty       = errors.New("empty playlist")
-	ErrPlaying     = errors.New("the playlist is already playing")
-	ErrStopped     = errors.New("the playlist is already stopped")
-	ErrVolumeRange = errors.New("the volume level is incorrect")
+	ErrNoFormat      = errors.New("no format found")
+	ErrEmpty         = errors.New("empty playlist")
+	ErrPlaying       = errors.New("the playlist is already playing")
+	ErrStopped       = errors.New("the playlist is already stopped")
+	ErrVolumeRange   = errors.New("the volume level is incorrect")
+	ErrThumbDownload = errors.New("could not get thumbnail")
+	ErrThumbNoURL    = errors.New("no URL found for thumbnail")
 )
 
+type Thumbnail struct {
+	Data     []byte
+	MimeType string
+	URL      string
+}
+
+// Downloads the thumbnail and adds it to the data.
+// If the URL field is not set it throws an error
+func (t *Thumbnail) GetThumbnail() error {
+	if t.URL == "" {
+		return ErrThumbNoURL
+	}
+
+	resp, err := http.Get(t.URL)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return ErrThumbDownload
+	}
+	t.MimeType = resp.Header.Get("content-type")
+
+	buf := new(bytes.Buffer)
+	writer := base64.NewEncoder(base64.StdEncoding, buf)
+	_, err = io.Copy(writer, resp.Body)
+	if err != nil {
+		return err
+	}
+
+	t.Data = buf.Bytes()
+	return nil
+}
+
+type Track struct {
+	Stream    *gumbleffmpeg.Stream
+	StreamURL string
+	PublicURL string
+	Title     string
+	Artist    string
+	Thumbnail *Thumbnail
+}
+
+// Returns the string for displaying the track
+func (t *Track) GetMessage() string {
+	title := fmt.Sprintf("<h3 style=\"margin: 0px; padding: 0px;\"><a style=\"margin: 0px; padding: 0px;\" href=\"%s\">%s</a></h3>", t.PublicURL, t.Title)
+	artist := fmt.Sprintf("<h4 style=\"margin: 0px; padding: 0px;\">by %s</h4>", t.Artist)
+	image := fmt.Sprintf("<img style=\"float: left; padding:0px;\"src=\"data:%s;base64,%s\"/>", t.Thumbnail.MimeType, string(t.Thumbnail.Data))
+	return fmt.Sprintf("%s%s%s", title, artist, image)
+}
+
 type Player struct {
-	streams       chan *gumbleffmpeg.Stream
-	currentStream *gumbleffmpeg.Stream
-	playing       bool
-	skip          chan bool
-	stop          chan bool
-	volume        float32
-	streamMutex   *sync.Mutex
+	tracks       chan *Track
+	currentTrack *Track
+	playing      bool
+	skip         chan bool
+	stop         chan bool
+	volume       float32
+	streamMutex  *sync.Mutex
 }
 
 // Creates and returns a Player instance
 func New() *Player {
 	return &Player{
-		streams:     make(chan *gumbleffmpeg.Stream, MaxPlaylistSize),
+		tracks:      make(chan *Track, MaxPlaylistSize),
 		playing:     false,
 		skip:        make(chan bool),
 		stop:        make(chan bool),
@@ -45,67 +104,13 @@ func New() *Player {
 	}
 }
 
-// Add the song from the URL to the playlist
-func (p *Player) AddToQueue(c *gumble.Client, url *url.URL) error {
-	stream, err := getStream(url, c)
-	if err != nil {
-		return err
-	}
-
-	p.streams <- stream
-	return nil
-}
-
-func (p *Player) ClearQueue() {
-	for {
-		select {
-		case <-p.streams:
-		default:
-			return
-		}
-	}
-}
-
-// Receives an integer between 0-100 and sets the volume to that value.
-// Returns an error if the number is not in the correct range
-func (p *Player) SetVolume(vol int) error {
-	if vol < 0 || vol > 100 {
-		return ErrVolumeRange
-	}
-
-	p.volume = float32(vol) / 100
-
-	p.streamMutex.Lock()
-	if p.currentStream != nil {
-		p.currentStream.Volume = p.volume
-	}
-	p.streamMutex.Unlock()
-
-	return nil
-}
-
-// Skips a song from the playlist
-func (p *Player) Skip() error {
-	if len(p.streams) == 0 {
-		return ErrEmpty
-	}
-
-	if !p.playing {
-		<-p.streams
-		return nil
-	}
-
-	p.skip <- true
-	return nil
-}
-
 // Starts the playlist
 func (p *Player) Start(c *gumble.Client) error {
 	if p.playing {
 		return ErrPlaying
 	}
 
-	if len(p.streams) == 0 {
+	if len(p.tracks) == 0 {
 		return ErrEmpty
 	}
 
@@ -125,19 +130,80 @@ func (p *Player) Stop() error {
 	return nil
 }
 
-func (p *Player) SearchAndAdd(c *gumble.Client, apiKey, query string) (string, error) {
+// Skips a song from the playlist
+func (p *Player) Skip() error {
+	if len(p.tracks) == 0 {
+		return ErrEmpty
+	}
+
+	if !p.playing {
+		<-p.tracks
+		return nil
+	}
+
+	p.skip <- true
+	return nil
+}
+
+// Add the song from the URL to the playlist
+// Returns the track that is added.
+func (p *Player) AddToQueue(c *gumble.Client, url *url.URL) (*Track, error) {
+	track, err := getTrack(url, c)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = track.Thumbnail.GetThumbnail(); err != nil {
+		return nil, err
+	}
+
+	p.tracks <- track
+	return track, nil
+}
+
+// Searches youtube using the query argument and adds the first result to the playlist.
+// Returns the track that is added.
+func (p *Player) SearchAndAdd(c *gumble.Client, apiKey, query string) (*Track, error) {
 	rawURL, err := youtube_search.Search(query, apiKey)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	p.AddToQueue(c, parsedURL)
 
-	return rawURL, nil
+	return p.AddToQueue(c, parsedURL)
+}
+
+// Clears the tracks from the playlist
+func (p *Player) ClearQueue() {
+	for {
+		select {
+		case <-p.tracks:
+		default:
+			return
+		}
+	}
+}
+
+// Receives an integer between 0-100 and sets the volume to that value.
+// Returns an error if the number is not in the correct range
+func (p *Player) SetVolume(vol int) error {
+	if vol < 0 || vol > 100 {
+		return ErrVolumeRange
+	}
+
+	p.volume = float32(vol) / 100
+
+	p.streamMutex.Lock()
+	if p.currentTrack.Stream != nil {
+		p.currentTrack.Stream.Volume = p.volume
+	}
+	p.streamMutex.Unlock()
+
+	return nil
 }
 
 // Start playing song from the playlist
@@ -145,24 +211,24 @@ func (p *Player) SearchAndAdd(c *gumble.Client, apiKey, query string) (string, e
 func (p *Player) startPlaylist(c *gumble.Client) {
 	stop := false
 
-	for p.currentStream = range p.streams {
+	for p.currentTrack = range p.tracks {
 		finished := make(chan bool)
 
 		p.streamMutex.Lock()
-		p.currentStream.Volume = p.volume
+		p.currentTrack.Stream.Volume = p.volume
 		p.streamMutex.Unlock()
 
-		go playStream(p.currentStream, finished)
+		go playStream(p.currentTrack.Stream, finished)
 
 		select {
 		case <-p.stop:
 			p.streamMutex.Lock()
-			p.currentStream.Stop()
+			p.currentTrack.Stream.Stop()
 			p.streamMutex.Unlock()
 			stop = true
 		case <-p.skip:
 			p.streamMutex.Lock()
-			p.currentStream.Stop()
+			p.currentTrack.Stream.Stop()
 			p.streamMutex.Unlock()
 		case <-finished:
 		}
@@ -186,37 +252,51 @@ func playStream(s *gumbleffmpeg.Stream, finished chan bool) {
 }
 
 // Receives a URL and returns an audio stream or an error
-func getStream(u *url.URL, client *gumble.Client) (*gumbleffmpeg.Stream, error) {
-	var streamURL string
+func getTrack(u *url.URL, client *gumble.Client) (*Track, error) {
+	var track *Track
 	var err error
 
 	switch u.Host {
 	case "www.youtube.com":
-		streamURL, err = getYoutubeStreamURL(u)
+		track, err = getYoutubeTrack(u)
 	}
 
 	if err != nil {
 		return nil, err
 	}
 
-	source := gumbleffmpeg.SourceFile(streamURL)
-	return gumbleffmpeg.New(client, source), nil
+	source := gumbleffmpeg.SourceFile(track.StreamURL)
+	track.Stream = gumbleffmpeg.New(client, source)
+	return track, nil
 }
 
 // Receives a youtube video URL and returns
 // the streaming URL or an error
-func getYoutubeStreamURL(u *url.URL) (string, error) {
+func getYoutubeTrack(u *url.URL) (*Track, error) {
 	client := &youtube.Client{}
 	video, err := client.GetVideo(u.String())
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	form, err := findBestFormat(video.Formats)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return client.GetStreamURL(video, form)
+	url, err := client.GetStreamURL(video, form)
+	track := &Track{
+		Title:     video.Title,
+		Artist:    video.Author,
+		StreamURL: url,
+		PublicURL: u.String(),
+		Thumbnail: &Thumbnail{URL: ""},
+	}
+
+	if len(video.Thumbnails) > 0 {
+		track.Thumbnail.URL = video.Thumbnails[0].URL
+	}
+
+	return track, err
 }
 
 // Finds the best audio formats for a format list
