@@ -278,12 +278,17 @@ func getYoutubeTrack(u *url.URL) (*Track, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	form, err := findBestFormat(video.Formats)
 	if err != nil {
 		return nil, err
 	}
 
 	url, err := client.GetStreamURL(video, form)
+	if err != nil {
+		return nil, err
+	}
+
 	track := &Track{
 		Title:     video.Title,
 		Artist:    video.Author,
