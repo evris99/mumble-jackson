@@ -207,7 +207,7 @@ func (p *Player) SetVolume(vol int) error {
 	p.volume = float32(vol) / 100
 
 	p.streamMutex.Lock()
-	if p.currentTrack.Stream != nil {
+	if p.currentTrack != nil && p.currentTrack.Stream != nil {
 		p.currentTrack.Stream.Volume = p.volume
 	}
 	p.streamMutex.Unlock()
