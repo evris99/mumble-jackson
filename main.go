@@ -271,8 +271,10 @@ func onClear(p *player.Player) string {
 
 // Sets the volume and returns the corresponding answer or an error
 func onVolume(p *player.Player, words []string) (string, error) {
+
 	if len(words) < 2 {
-		return "", ErrTooFewArgs
+		vol := p.GetVolume() * 100
+		return fmt.Sprintf("Current volume is %v", vol), nil
 	}
 
 	value, err := strconv.Atoi(words[1])

@@ -140,7 +140,6 @@ func (p *Player) Skip() error {
 		<-p.tracks
 		return nil
 	}
-
 	p.skip <- true
 	return nil
 }
@@ -186,6 +185,11 @@ func (p *Player) ClearQueue() {
 			return
 		}
 	}
+}
+
+// Returns the current volume in float (Range: 0 - 1)
+func (p *Player) GetVolume() float32 {
+	return p.volume
 }
 
 // Receives an integer between 0-100 and sets the volume to that value.
