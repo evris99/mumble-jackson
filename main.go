@@ -149,9 +149,9 @@ func handleMessage(player *player.Player, config *Config) func(e *gumble.TextMes
 		words := strings.Fields(strings.TrimPrefix(e.Message, config.Prefix))
 
 		switch words[0] {
-		case "start":
+		case "start", "play":
 			response, err = onStart(player, e.Client)
-		case "add":
+		case "add", "url":
 			response, err = onAdd(player, e.Client, words)
 		case "search":
 			response, err = onSearch(player, e.Client, words, config)
@@ -159,7 +159,7 @@ func handleMessage(player *player.Player, config *Config) func(e *gumble.TextMes
 			response, err = onStop(player)
 		case "skip":
 			response, err = onSkip(player)
-		case "vol":
+		case "vol", "volume":
 			response, err = onVolume(player, words)
 		case "clear":
 			response, err = onClear(player), nil
