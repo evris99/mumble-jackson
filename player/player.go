@@ -264,13 +264,12 @@ func playStream(s *gumbleffmpeg.Stream, finished chan bool) {
 func getTrack(u *url.URL, client *gumble.Client) (*Track, error) {
 	var track *Track
 	var err error
-	fmt.Println(u.Host)
 	switch u.Host {
 	case "www.youtube.com", "youtu.be":
 		track, err = getYoutubeTrack(u)
 	}
 
-	if err != nil || track == nil {
+	if err != nil {
 		return nil, err
 	}
 
