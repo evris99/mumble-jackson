@@ -133,7 +133,12 @@ func (p *Player) Stop() error {
 // Skips a song from the playlist
 func (p *Player) Skip() error {
 	if len(p.tracks) == 0 {
-		return ErrEmpty
+		if !p.playing {
+			return ErrEmpty
+		} else {
+			return p.Stop()
+		}
+
 	}
 
 	if !p.playing {
