@@ -133,14 +133,18 @@ func (p *Player) Stop() error {
 // Skips a song from the playlist
 func (p *Player) Skip() error {
 	if len(p.tracks) == 0 {
-		return ErrEmpty
+		if !p.playing {
+			return ErrEmpty
+		} else {
+			return p.Stop()
+		}
+
 	}
 
 	if !p.playing {
 		<-p.tracks
 		return nil
 	}
-
 	p.skip <- true
 	return nil
 }
@@ -186,6 +190,11 @@ func (p *Player) ClearQueue() {
 			return
 		}
 	}
+}
+
+// Returns the current volume in float (Range: 0 - 1)
+func (p *Player) GetVolume() float32 {
+	return p.volume
 }
 
 // Receives an integer between 0-100 and sets the volume to that value.
@@ -255,9 +264,8 @@ func playStream(s *gumbleffmpeg.Stream, finished chan bool) {
 func getTrack(u *url.URL, client *gumble.Client) (*Track, error) {
 	var track *Track
 	var err error
-
 	switch u.Host {
-	case "www.youtube.com":
+	case "www.youtube.com", "youtu.be":
 		track, err = getYoutubeTrack(u)
 	}
 
@@ -278,12 +286,17 @@ func getYoutubeTrack(u *url.URL) (*Track, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	form, err := findBestFormat(video.Formats)
 	if err != nil {
 		return nil, err
 	}
 
 	url, err := client.GetStreamURL(video, form)
+	if err != nil {
+		return nil, err
+	}
+
 	track := &Track{
 		Title:     video.Title,
 		Artist:    video.Author,

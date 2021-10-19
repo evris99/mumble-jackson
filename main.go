@@ -149,9 +149,9 @@ func handleMessage(player *player.Player, config *Config) func(e *gumble.TextMes
 		words := strings.Fields(strings.TrimPrefix(e.Message, config.Prefix))
 
 		switch words[0] {
-		case "start":
+		case "start", "play":
 			response, err = onStart(player, e.Client)
-		case "add":
+		case "add", "url":
 			response, err = onAdd(player, e.Client, words)
 		case "search":
 			response, err = onSearch(player, e.Client, words, config)
@@ -159,7 +159,7 @@ func handleMessage(player *player.Player, config *Config) func(e *gumble.TextMes
 			response, err = onStop(player)
 		case "skip":
 			response, err = onSkip(player)
-		case "vol":
+		case "vol", "volume":
 			response, err = onVolume(player, words)
 		case "clear":
 			response, err = onClear(player), nil
@@ -271,8 +271,10 @@ func onClear(p *player.Player) string {
 
 // Sets the volume and returns the corresponding answer or an error
 func onVolume(p *player.Player, words []string) (string, error) {
+
 	if len(words) < 2 {
-		return "", ErrTooFewArgs
+		vol := p.GetVolume() * 100
+		return fmt.Sprintf("Current volume is %v", vol), nil
 	}
 
 	value, err := strconv.Atoi(words[1])
