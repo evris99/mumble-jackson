@@ -168,7 +168,6 @@ func handleMessage(player *player.Player, config *Config) func(e *gumble.TextMes
 			response, err = fmt.Sprintf(helpmessage, config.Prefix), nil
 		}
 
-		fmt.Print(response)
 		if handleError(err, e.Client) {
 			e.Client.Self.Channel.Send(response, false)
 		}
