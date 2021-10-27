@@ -39,13 +39,6 @@ const helpmessage string = `<h2>Usage</h2><br>
 <b>%[1]svol $NUM</b>: Sets the volume to the specified number. The number must be between 0-100.<br>
 <b>%[1]shelp</b>: Shows this message.<br>`
 
-// Used for keeping current elapsed time values when asking for current song info
-type Elapsed_time struct {
-	Seconds int
-	Minutes int
-	Hours   int
-}
-
 // The configuration for the TLS certificates
 type CertConfig struct {
 	UseCertificate bool   `toml:"use_certificate"`
@@ -172,7 +165,7 @@ func handleMessage(player *player.Player, config *Config) func(e *gumble.TextMes
 		case "clear":
 			response, err = onClear(player), nil
 		case "info", "current", "cur":
-			response, err = onCurrentSong(player)
+			response, err = onCurrentSong(player), nil
 		case "help":
 			// Adds the prefix to all the commands shown
 			response, err = fmt.Sprintf(helpmessage, config.Prefix), nil
@@ -203,52 +196,8 @@ func handleDisconnect(e *gumble.DisconnectEvent) {
 }
 
 // Reads and sends Current Song details (duration, current point on track etc)
-func onCurrentSong(p *player.Player) (string, error) {
-	stream, err := p.GetCurrentStream()
-	if err != nil {
-		return fmt.Sprintf("%f", err), err
-	}
-	elapsed := Elapsed_time{int(stream.Elapsed().Seconds()), int(stream.Elapsed().Minutes()), int(stream.Elapsed().Hours())}
-	percentage_played := 1 - (float64((p.CurrentTrack.Duration.Seconds - elapsed.Seconds)) / float64(p.CurrentTrack.Duration.Seconds)) //returns value 0 - 1 (0 = just started, 1 = finished)
-	current_time := makeTimeFormat(elapsed.Hours%60, elapsed.Minutes%60, elapsed.Seconds%60)
-	total_time := makeTimeFormat(p.CurrentTrack.Duration.Hours%60, p.CurrentTrack.Duration.Minutes%60, p.CurrentTrack.Duration.Seconds%60)
-	return currentSongMsg(current_time, total_time, percentage_played), err
-}
-
-// Sends a string in the visual format of track that looks like "<Current time> ======O--- <Total Time>"
-func currentSongMsg(current_time string, total_time string, percentage_played float64) string {
-	track_lines := ""
-	track_current_place := int(percentage_played * 10)
-	for i := 0; i < 10; i++ {
-		if i == track_current_place {
-			track_lines += "🔶"
-		} else if i < track_current_place {
-			track_lines += "🟦"
-		} else {
-			track_lines += "➖"
-		}
-	}
-	return fmt.Sprintf("%s ▶ %s %s", current_time, track_lines, total_time)
-}
-
-// Creates and returns a string with the format "hh:mm:ss"
-func makeTimeFormat(hours int, minutes int, seconds int) string {
-	str_hours := ""
-	if hours/10 == 0 {
-		str_hours += "0"
-	}
-	str_hours += strconv.Itoa(hours)
-	str_minutes := ""
-	if minutes/10 == 0 {
-		str_minutes += "0"
-	}
-	str_minutes += strconv.Itoa(minutes)
-	str_seconds := ""
-	if seconds/10 == 0 {
-		str_seconds += "0"
-	}
-	str_seconds += strconv.Itoa(seconds)
-	return str_hours + ":" + str_minutes + ":" + str_seconds
+func onCurrentSong(p *player.Player) string {
+	return p.GetCurrentSong()
 }
 
 // Starts the playlist and returns the corresponding answer or an error

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+	"time"
 
 	"github.com/evris99/mumble-music-bot/youtube_search"
 	"github.com/kkdai/youtube/v2"
@@ -29,12 +30,6 @@ var (
 	ErrThumbDownload = errors.New("could not get thumbnail")
 	ErrThumbNoURL    = errors.New("no URL found for thumbnail")
 )
-
-type VideoDuration struct {
-	Hours   int
-	Minutes int
-	Seconds int
-}
 
 type Thumbnail struct {
 	Data     []byte
@@ -73,7 +68,7 @@ func (t *Thumbnail) GetThumbnail() error {
 
 type Track struct {
 	Stream    *gumbleffmpeg.Stream
-	Duration  *VideoDuration
+	Duration  time.Duration
 	StreamURL string
 	PublicURL string
 	Title     string
@@ -85,14 +80,14 @@ type Track struct {
 func (t *Track) GetMessage() string {
 	title := fmt.Sprintf("<h3 style=\"margin: 0px; padding: 0px;\"><a style=\"margin: 0px; padding: 0px;\" href=\"%s\">%s</a></h3>", t.PublicURL, t.Title)
 	artist := fmt.Sprintf("<h4 style=\"margin: 0px; padding: 0px;\"> by %s</h4>", t.Artist)
-	duration := fmt.Sprintf(" %v Hours %v Minutes %v Seconds <br>", t.Duration.Hours, t.Duration.Minutes, t.Duration.Seconds)
+	duration := fmt.Sprintf("%s<br>", formatDuration(t.Duration))
 	image := fmt.Sprintf("<img style=\"float: left; padding:0px;\"src=\"data:%s;base64,%s\"/><br>", t.Thumbnail.MimeType, string(t.Thumbnail.Data))
 	return fmt.Sprintf("%s%s%s%s", title, artist, duration, image)
 }
 
 type Player struct {
 	tracks       chan *Track
-	CurrentTrack *Track
+	currentTrack *Track
 	playing      bool
 	skip         chan bool
 	stop         chan bool
@@ -200,6 +195,15 @@ func (p *Player) ClearQueue() {
 	}
 }
 
+// Returns info about the current song
+func (p *Player) GetCurrentSong() string {
+	currentTime := formatDuration(p.currentTrack.Stream.Elapsed())
+	totalTime := formatDuration(p.currentTrack.Duration)
+	progress := getProgressBar(p.currentTrack.Duration, p.currentTrack.Stream.Elapsed())
+	header := p.currentTrack.GetMessage()
+	return fmt.Sprintf("<h4>%s ▶ %s %s</h4>%s", currentTime, progress, totalTime, header)
+}
+
 // Returns the current volume in float (Range: 0 - 1)
 func (p *Player) GetVolume() float32 {
 	return p.volume
@@ -215,8 +219,8 @@ func (p *Player) SetVolume(vol int) error {
 	p.volume = float32(vol) / 100
 
 	p.streamMutex.Lock()
-	if p.CurrentTrack != nil && p.CurrentTrack.Stream != nil {
-		p.CurrentTrack.Stream.Volume = p.volume
+	if p.currentTrack != nil && p.currentTrack.Stream != nil {
+		p.currentTrack.Stream.Volume = p.volume
 	}
 	p.streamMutex.Unlock()
 
@@ -228,22 +232,22 @@ func (p *Player) SetVolume(vol int) error {
 func (p *Player) startPlaylist(c *gumble.Client) {
 	stop := false
 
-	for p.CurrentTrack = range p.tracks {
+	for p.currentTrack = range p.tracks {
 		finished := make(chan bool)
 
 		p.streamMutex.Lock()
-		p.CurrentTrack.Stream.Volume = p.volume
+		p.currentTrack.Stream.Volume = p.volume
 		p.streamMutex.Unlock()
-		go playStream(p.CurrentTrack.Stream, finished)
+		go playStream(p.currentTrack.Stream, finished)
 		select {
 		case <-p.stop:
 			p.streamMutex.Lock()
-			p.CurrentTrack.Stream.Stop()
+			p.currentTrack.Stream.Stop()
 			p.streamMutex.Unlock()
 			stop = true
 		case <-p.skip:
 			p.streamMutex.Lock()
-			p.CurrentTrack.Stream.Stop()
+			p.currentTrack.Stream.Stop()
 			p.streamMutex.Unlock()
 		case <-finished:
 			if len(p.tracks) == 0 {
@@ -270,13 +274,33 @@ func playStream(s *gumbleffmpeg.Stream, finished chan bool) {
 	finished <- true
 }
 
-// Returns the given player track channel(s)
-func (p *Player) GetCurrentStream() (*gumbleffmpeg.Stream, error) {
-	if !p.playing {
-		return nil, ErrEmpty
+// Creates and returns a string with the format "hh:mm:ss"
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Second)
+	h := d / time.Hour
+	d -= h * time.Hour
+	m := d / time.Minute
+	d -= m * time.Minute
+	s := d / time.Second
+	return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
+}
+
+// Creates and returns a progress bar with unicode characters
+func getProgressBar(total, elapsed time.Duration) string {
+	//returns value 0 - 1 (0 = just started, 1 = finished)
+	percentage_played := 1 - (total.Seconds()-elapsed.Seconds())/total.Seconds()
+	track_lines := ""
+	track_current_place := int(percentage_played * 10)
+	for i := 0; i < 10; i++ {
+		if i == track_current_place {
+			track_lines += "🔶"
+		} else if i < track_current_place {
+			track_lines += "🟦"
+		} else {
+			track_lines += "➖"
+		}
 	}
-	s := p.CurrentTrack.Stream
-	return s, nil
+	return track_lines
 }
 
 // Receives a URL and returns an audio stream or an error
@@ -315,11 +339,12 @@ func getYoutubeTrack(u *url.URL) (*Track, error) {
 	if err != nil {
 		return nil, err
 	}
-	duration := VideoDuration{int(video.Duration.Hours()), int(video.Duration.Minutes()), int(video.Duration.Seconds())}
+
+	duration := video.Duration
 	track := &Track{
 		Title:     video.Title,
 		Artist:    video.Author,
-		Duration:  &duration,
+		Duration:  duration,
 		StreamURL: url,
 		PublicURL: u.String(),
 		Thumbnail: &Thumbnail{URL: ""},
