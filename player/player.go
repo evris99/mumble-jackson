@@ -30,6 +30,12 @@ var (
 	ErrThumbNoURL    = errors.New("no URL found for thumbnail")
 )
 
+type VideoDuration struct {
+	Hours   int
+	Minutes int
+	Seconds int
+}
+
 type Thumbnail struct {
 	Data     []byte
 	MimeType string
@@ -67,6 +73,7 @@ func (t *Thumbnail) GetThumbnail() error {
 
 type Track struct {
 	Stream    *gumbleffmpeg.Stream
+	Duration  *VideoDuration
 	StreamURL string
 	PublicURL string
 	Title     string
@@ -77,14 +84,15 @@ type Track struct {
 // Returns the string for displaying the track
 func (t *Track) GetMessage() string {
 	title := fmt.Sprintf("<h3 style=\"margin: 0px; padding: 0px;\"><a style=\"margin: 0px; padding: 0px;\" href=\"%s\">%s</a></h3>", t.PublicURL, t.Title)
-	artist := fmt.Sprintf("<h4 style=\"margin: 0px; padding: 0px;\">by %s</h4>", t.Artist)
-	image := fmt.Sprintf("<img style=\"float: left; padding:0px;\"src=\"data:%s;base64,%s\"/>", t.Thumbnail.MimeType, string(t.Thumbnail.Data))
-	return fmt.Sprintf("%s%s%s", title, artist, image)
+	artist := fmt.Sprintf("<h4 style=\"margin: 0px; padding: 0px;\"> by %s</h4>", t.Artist)
+	duration := fmt.Sprintf(" %v Hours %v Minutes %v Seconds <br>", t.Duration.Hours, t.Duration.Minutes, t.Duration.Seconds)
+	image := fmt.Sprintf("<img style=\"float: left; padding:0px;\"src=\"data:%s;base64,%s\"/><br>", t.Thumbnail.MimeType, string(t.Thumbnail.Data))
+	return fmt.Sprintf("%s%s%s%s", title, artist, duration, image)
 }
 
 type Player struct {
 	tracks       chan *Track
-	currentTrack *Track
+	CurrentTrack *Track
 	playing      bool
 	skip         chan bool
 	stop         chan bool
@@ -152,7 +160,7 @@ func (p *Player) Skip() error {
 // Add the song from the URL to the playlist
 // Returns the track that is added.
 func (p *Player) AddToQueue(c *gumble.Client, url *url.URL) (*Track, error) {
-	track, err := getTrack(url, c)
+	track, err := getURLTrack(url, c)
 	if err != nil {
 		return nil, err
 	}
@@ -207,8 +215,8 @@ func (p *Player) SetVolume(vol int) error {
 	p.volume = float32(vol) / 100
 
 	p.streamMutex.Lock()
-	if p.currentTrack != nil && p.currentTrack.Stream != nil {
-		p.currentTrack.Stream.Volume = p.volume
+	if p.CurrentTrack != nil && p.CurrentTrack.Stream != nil {
+		p.CurrentTrack.Stream.Volume = p.volume
 	}
 	p.streamMutex.Unlock()
 
@@ -220,24 +228,24 @@ func (p *Player) SetVolume(vol int) error {
 func (p *Player) startPlaylist(c *gumble.Client) {
 	stop := false
 
-	for p.currentTrack = range p.tracks {
+	for p.CurrentTrack = range p.tracks {
 		finished := make(chan bool)
 
 		p.streamMutex.Lock()
-		p.currentTrack.Stream.Volume = p.volume
+		p.CurrentTrack.Stream.Volume = p.volume
 		p.streamMutex.Unlock()
 
-		go playStream(p.currentTrack.Stream, finished)
+		go playStream(p.CurrentTrack.Stream, finished)
 
 		select {
 		case <-p.stop:
 			p.streamMutex.Lock()
-			p.currentTrack.Stream.Stop()
+			p.CurrentTrack.Stream.Stop()
 			p.streamMutex.Unlock()
 			stop = true
 		case <-p.skip:
 			p.streamMutex.Lock()
-			p.currentTrack.Stream.Stop()
+			p.CurrentTrack.Stream.Stop()
 			p.streamMutex.Unlock()
 		case <-finished:
 		}
@@ -260,8 +268,17 @@ func playStream(s *gumbleffmpeg.Stream, finished chan bool) {
 	finished <- true
 }
 
+// Returns the given player track channel(s)
+func (p *Player) GetCurrentStream() (*gumbleffmpeg.Stream, error) {
+	if !p.playing {
+		return nil, ErrEmpty
+	}
+	s := p.CurrentTrack.Stream
+	return s, nil
+}
+
 // Receives a URL and returns an audio stream or an error
-func getTrack(u *url.URL, client *gumble.Client) (*Track, error) {
+func getURLTrack(u *url.URL, client *gumble.Client) (*Track, error) {
 	var track *Track
 	var err error
 	switch u.Host {
@@ -296,10 +313,11 @@ func getYoutubeTrack(u *url.URL) (*Track, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	duration := VideoDuration{int(video.Duration.Hours()), int(video.Duration.Minutes()), int(video.Duration.Seconds())}
 	track := &Track{
 		Title:     video.Title,
 		Artist:    video.Author,
+		Duration:  &duration,
 		StreamURL: url,
 		PublicURL: u.String(),
 		Thumbnail: &Thumbnail{URL: ""},
