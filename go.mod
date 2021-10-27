@@ -5,6 +5,7 @@ go 1.17
 require (
 	github.com/BurntSushi/toml v0.4.1
 	github.com/kkdai/youtube/v2 v2.7.4
+	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	layeh.com/gumble v0.0.0-20200818122324-146f9205029b
 	mvdan.cc/xurls/v2 v2.3.0
 )

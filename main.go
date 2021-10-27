@@ -34,6 +34,7 @@ const helpmessage string = `<h2>Usage</h2><br>
 <b>%[1]sstop</b>: Stops the playlist.<br>
 <b>%[1]sadd $URL</b>: Add the youtube URL to the playlist.<br>
 <b>%[1]ssearch $QUERY</b>: Searches and adds the song to the playlist.<br>
+<b>%[1]splaylist $URL</b>: Add the playlist from the given URL to the queue.<br>
 <b>%[1]sskip</b>: Skips a track from the playlist.<br>
 <b>%[1]sclear</b>: Clears the playlist.<br>
 <b>%[1]svol $NUM</b>: Sets the volume to the specified number. The number must be between 0-100.<br>
@@ -141,19 +142,22 @@ func getTLSConfig(c Config) (*tls.Config, error) {
 // Returns a function to handle the text message event
 func handleMessage(player *player.Player, config *Config) func(e *gumble.TextMessageEvent) {
 	return func(e *gumble.TextMessageEvent) {
-		if !strings.HasPrefix(e.Message, config.Prefix) {
+		message := strings.TrimSpace(e.Message)
+		if !strings.HasPrefix(message, config.Prefix) {
 			return
 		}
 
 		var response string
 		var err error
-		words := strings.Fields(strings.TrimPrefix(e.Message, config.Prefix))
+		words := strings.Fields(strings.TrimPrefix(message, config.Prefix))
 
 		switch words[0] {
 		case "start", "play":
 			response, err = onStart(player, e.Client)
 		case "add", "url":
 			response, err = onAdd(player, e.Client, words)
+		case "playlist":
+			response, err = onPlaylist(player, e.Client, words)
 		case "search":
 			response, err = onSearch(player, e.Client, words, config)
 		case "stop":
@@ -233,6 +237,31 @@ func onAdd(p *player.Player, c *gumble.Client, words []string) (string, error) {
 	}
 
 	return getAdditionResponse(track), nil
+}
+
+// Adds the plalist to the queue and returns corresponding answer
+func onPlaylist(p *player.Player, c *gumble.Client, words []string) (string, error) {
+	if len(words) < 2 {
+		return "", ErrTooFewArgs
+	}
+
+	regex := xurls.Strict()
+	rawURL := regex.FindString(strings.Join(words[1:], " "))
+	if rawURL == "" {
+		return "", ErrNoURLFound
+	}
+
+	url, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+
+	trackNum, err := p.AddPlaylist(c, url)
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("<h4>Added %d song to the queue<br></h4>", trackNum), nil
 }
 
 // Stops the playlist and returns the corresponding answer or an error
