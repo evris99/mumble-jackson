@@ -234,9 +234,7 @@ func (p *Player) startPlaylist(c *gumble.Client) {
 		p.streamMutex.Lock()
 		p.CurrentTrack.Stream.Volume = p.volume
 		p.streamMutex.Unlock()
-
 		go playStream(p.CurrentTrack.Stream, finished)
-
 		select {
 		case <-p.stop:
 			p.streamMutex.Lock()
@@ -248,6 +246,10 @@ func (p *Player) startPlaylist(c *gumble.Client) {
 			p.CurrentTrack.Stream.Stop()
 			p.streamMutex.Unlock()
 		case <-finished:
+			if len(p.tracks) == 0 {
+				p.playing = false
+				stop = true
+			}
 		}
 
 		if stop {
