@@ -38,7 +38,8 @@ const helpmessage string = `<h2>Usage</h2><br>
 <b>%[1]sskip</b>: Skips a track from the playlist.<br>
 <b>%[1]sclear</b>: Clears the playlist.<br>
 <b>%[1]svol $NUM</b>: Sets the volume to the specified number. The number must be between 0-100.<br>
-<b>%[1]shelp</b>: Shows this message.<br>`
+<b>%[1]shelp</b>: Shows this message.<br>
+<b>%[1]slist</b>: Shows list of next songs.<br>`
 
 // The configuration for the TLS certificates
 type CertConfig struct {
@@ -162,14 +163,16 @@ func handleMessage(player *player.Player, config *Config) func(e *gumble.TextMes
 			response, err = onSearch(player, e.Client, words, config)
 		case "stop":
 			response, err = onStop(player)
-		case "skip":
+		case "skip", "next":
 			response, err = onSkip(player)
 		case "vol", "volume":
 			response, err = onVolume(player, words)
 		case "clear":
 			response, err = onClear(player), nil
 		case "info", "current", "cur":
-			response, err = onCurrentSong(player), nil
+			response, err = onCurrentSong(player)
+		case "list", "queue":
+			response, err = onListSongs(player)
 		case "help":
 			// Adds the prefix to all the commands shown
 			response, err = fmt.Sprintf(helpmessage, config.Prefix), nil
@@ -199,8 +202,13 @@ func handleDisconnect(e *gumble.DisconnectEvent) {
 	log.Fatalf("Disconnect reason is %s: %s\n", reason, e.String)
 }
 
+// Gets the list of next songs and prints them
+func onListSongs(p *player.Player) (string, error) {
+	return p.GetNextSongs()
+}
+
 // Reads and sends Current Song details (duration, current point on track etc)
-func onCurrentSong(p *player.Player) string {
+func onCurrentSong(p *player.Player) (string, error) {
 	return p.GetCurrentSong()
 }
 
@@ -261,7 +269,11 @@ func onPlaylist(p *player.Player, c *gumble.Client, words []string) (string, err
 		return "", err
 	}
 
-	return fmt.Sprintf("<h4>Added %d song to the queue<br></h4>", trackNum), nil
+	s := "song"
+	if trackNum != 1 {
+		s = "songs"
+	}
+	return fmt.Sprintf("<h4>Added %d %s to the queue<br></h4>", trackNum, s), nil
 }
 
 // Stops the playlist and returns the corresponding answer or an error
@@ -365,5 +377,5 @@ func handleError(err error, c *gumble.Client) bool {
 
 // Concats and returns the added string and the track message
 func getAdditionResponse(t *player.Track) string {
-	return fmt.Sprintf("Added:%s", t.GetMessage())
+	return fmt.Sprintf("Added: %s", t.GetMessage())
 }
