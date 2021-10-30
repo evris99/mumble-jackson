@@ -272,7 +272,7 @@ func (p *Player) ClearQueue() {
 
 // Returns info about the current song
 func (p *Player) GetCurrentSong() (string, error) {
-	if p.currentTrack == nil {
+	if p.currentTrack == nil || p.currentTrack.Stream == nil {
 		return "", ErrEmpty
 	}
 	currentTime := formatDuration(p.currentTrack.Stream.Elapsed())
