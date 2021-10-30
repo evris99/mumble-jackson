@@ -204,7 +204,6 @@ func (p *Player) AddToQueue(c *gumble.Client, url *url.URL) (*Track, error) {
 
 // Receives a youtube plalist URL, adds it to the queue and returns the number of tracks in it
 func (p *Player) AddPlaylist(c *gumble.Client, url *url.URL) (int, error) {
-	c.Self.Channel.Send("Adding Playlist...", false)
 	tracks, err := getPlaylistTracks(url, c)
 	if err != nil {
 		return 0, err
