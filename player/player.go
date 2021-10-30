@@ -189,7 +189,6 @@ func (p *Player) Skip() error {
 // Add the song from the URL to the playlist
 // Returns the track that is added.
 func (p *Player) AddToQueue(c *gumble.Client, url *url.URL) (*Track, error) {
-	c.Self.Channel.Send("Adding...", false)
 	track, err := getURLTrack(url, c)
 	if err != nil {
 		return nil, err
