@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"sync"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 )
 
 const MaxPlaylistSize = 100
+const MaxNextSongs = 20
 
 var (
 	ErrNoFormat      = errors.New("no format found")
@@ -97,7 +99,6 @@ func getTrackFromVideo(client *youtube.Client, video *youtube.Video) (*Track, er
 		PublicURL: fmt.Sprintf("https://www.youtube.com/watch?v=%s", video.ID),
 		Thumbnail: &Thumbnail{URL: ""},
 	}
-
 	if len(video.Thumbnails) > 0 {
 		track.Thumbnail.URL = video.Thumbnails[0].URL
 	}
@@ -118,6 +119,7 @@ func (t *Track) GetMessage() string {
 type Player struct {
 	tracks       chan *Track
 	currentTrack *Track
+	SongList     []string
 	playing      bool
 	skip         chan bool
 	stop         chan bool
@@ -130,6 +132,7 @@ func New(default_volume uint8) *Player {
 	return &Player{
 		tracks:      make(chan *Track, MaxPlaylistSize),
 		playing:     false,
+		SongList:    make([]string, 0),
 		skip:        make(chan bool),
 		stop:        make(chan bool),
 		volume:      float32(default_volume) / 100,
@@ -147,6 +150,7 @@ func (p *Player) Start(c *gumble.Client) error {
 		return ErrEmpty
 	}
 
+	p.SongList = p.SongList[1:]
 	p.playing = true
 	go p.startPlaylist(c)
 	return nil
@@ -157,7 +161,6 @@ func (p *Player) Stop() error {
 	if !p.playing {
 		return ErrStopped
 	}
-
 	p.playing = false
 	p.stop <- true
 	return nil
@@ -171,13 +174,14 @@ func (p *Player) Skip() error {
 		} else {
 			return p.Stop()
 		}
-
 	}
 
 	if !p.playing {
 		<-p.tracks
 		return nil
 	}
+
+	p.SongList = p.SongList[1:]
 	p.skip <- true
 	return nil
 }
@@ -185,6 +189,7 @@ func (p *Player) Skip() error {
 // Add the song from the URL to the playlist
 // Returns the track that is added.
 func (p *Player) AddToQueue(c *gumble.Client, url *url.URL) (*Track, error) {
+	c.Self.Channel.Send("Adding...", false)
 	track, err := getURLTrack(url, c)
 	if err != nil {
 		return nil, err
@@ -193,18 +198,18 @@ func (p *Player) AddToQueue(c *gumble.Client, url *url.URL) (*Track, error) {
 	if err = track.Thumbnail.GetThumbnail(); err != nil {
 		return nil, err
 	}
-
+	p.SongList = append(p.SongList, track.Title)
 	p.tracks <- track
 	return track, nil
 }
 
 // Receives a youtube plalist URL, adds it to the queue and returns the number of tracks in it
 func (p *Player) AddPlaylist(c *gumble.Client, url *url.URL) (int, error) {
+	c.Self.Channel.Send("Adding Playlist...", false)
 	tracks, err := getPlaylistTracks(url, c)
 	if err != nil {
 		return 0, err
 	}
-
 	// Get thumbnails in parallel
 	wg := new(errgroup.Group)
 	for _, track := range tracks {
@@ -216,17 +221,27 @@ func (p *Player) AddPlaylist(c *gumble.Client, url *url.URL) (int, error) {
 	}
 
 	for _, track := range tracks {
+		p.SongList = append(p.SongList, track.Title)
 		p.tracks <- track
 	}
-
 	return len(tracks), nil
 }
 
-// Returns a callback function for getting a track's thumbnail
-func getThumbnailCallback(t *Track) func() error {
-	return func() error {
-		return t.Thumbnail.GetThumbnail()
+// Get songs that are going to play next
+func (p *Player) GetNextSongs() (string, error) {
+	if len(p.tracks) == 0 {
+		return "", ErrEmpty
 	}
+	songlist := "<br><b>"
+	for i, songname := range p.SongList {
+		if i == MaxNextSongs {
+			songlist += ". . . . <br>"
+			break
+		}
+		songlist += strconv.Itoa(i+1) + ": " + songname + "<br>"
+	}
+	songlist += "</b>"
+	return fmt.Sprint(songlist), nil
 }
 
 // Searches youtube using the query argument and adds the first result to the playlist.
@@ -247,6 +262,7 @@ func (p *Player) SearchAndAdd(c *gumble.Client, apiKey, query string) (*Track, e
 
 // Clears the tracks from the playlist
 func (p *Player) ClearQueue() {
+	p.SongList = nil
 	for {
 		select {
 		case <-p.tracks:
@@ -257,12 +273,15 @@ func (p *Player) ClearQueue() {
 }
 
 // Returns info about the current song
-func (p *Player) GetCurrentSong() string {
+func (p *Player) GetCurrentSong() (string, error) {
+	if p.currentTrack == nil {
+		return "", ErrEmpty
+	}
 	currentTime := formatDuration(p.currentTrack.Stream.Elapsed())
 	totalTime := formatDuration(p.currentTrack.Duration)
 	progress := getProgressBar(p.currentTrack.Duration, p.currentTrack.Stream.Elapsed())
 	header := p.currentTrack.GetMessage()
-	return fmt.Sprintf("<h4>%s ▶ %s %s</h4>%s", currentTime, progress, totalTime, header)
+	return fmt.Sprintf("<h4>%s ▶ %s %s</h4>%s", currentTime, progress, totalTime, header), nil
 }
 
 // Returns the current volume in float (Range: 0 - 1)
@@ -320,6 +339,13 @@ func (p *Player) startPlaylist(c *gumble.Client) {
 		if stop {
 			break
 		}
+	}
+}
+
+// Returns a callback function for getting a track's thumbnail
+func getThumbnailCallback(t *Track) func() error {
+	return func() error {
+		return t.Thumbnail.GetThumbnail()
 	}
 }
 
