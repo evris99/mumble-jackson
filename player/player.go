@@ -241,7 +241,7 @@ func (p *Player) GetNextSongs() (string, error) {
 		songlist += strconv.Itoa(i+1) + ": " + songname + "<br>"
 	}
 	songlist += "</b>"
-	return fmt.Sprint(songlist), nil
+	return songlist, nil
 }
 
 // Searches youtube using the query argument and adds the first result to the playlist.
