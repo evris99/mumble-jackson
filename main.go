@@ -158,8 +158,6 @@ func handleMessage(player *player.Player, config *Config) func(e *gumble.TextMes
 			response, err = onStart(player, e.Client)
 		case "add", "url":
 			response, err = onAdd(player, e.Client, words)
-		case "playlist":
-			response, err = onPlaylist(player, e.Client, words)
 		case "search":
 			response, err = onSearch(player, e.Client, words, config)
 		case "stop":
@@ -240,41 +238,15 @@ func onAdd(p *player.Player, c *gumble.Client, words []string) (string, error) {
 		return "", err
 	}
 
-	track, err := p.AddToQueue(c, url)
+	tracks, err := p.AddToQueue(c, url)
 	if err != nil {
 		return "", err
 	}
 
-	return getAdditionResponse(track), nil
-}
-
-// Adds the plalist to the queue and returns corresponding answer
-func onPlaylist(p *player.Player, c *gumble.Client, words []string) (string, error) {
-	if len(words) < 2 {
-		return "", ErrTooFewArgs
+	if len(tracks) == 1 {
+		return fmt.Sprintf("Added: %v", tracks[0]), nil
 	}
-
-	regex := xurls.Strict()
-	rawURL := regex.FindString(strings.Join(words[1:], " "))
-	if rawURL == "" {
-		return "", ErrNoURLFound
-	}
-
-	url, err := url.Parse(rawURL)
-	if err != nil {
-		return "", err
-	}
-
-	trackNum, err := p.AddPlaylist(c, url)
-	if err != nil {
-		return "", err
-	}
-
-	s := "song"
-	if trackNum != 1 {
-		s = "songs"
-	}
-	return fmt.Sprintf("<h4>Added %d %s to the queue<br></h4>", trackNum, s), nil
+	return fmt.Sprintf("<h4>Added %d songs to the queue<br></h4>", len(tracks)), nil
 }
 
 // Stops the playlist and returns the corresponding answer or an error
@@ -301,7 +273,8 @@ func onSearch(p *player.Player, c *gumble.Client, words []string, config *Config
 		return "", err
 	}
 
-	return getAdditionResponse(track), nil
+	// return getAdditionResponse(track), nil
+	return fmt.Sprintf("Added: %v", track), nil
 }
 
 // Skips the song and returns the corresponding answer or an error
@@ -356,8 +329,6 @@ func handleError(err error, c *gumble.Client) bool {
 		response = "The volume must be between 0 and 100"
 	case errors.Is(err, player.ErrThumbDownload):
 		response = "Could not download the track's thumbnail"
-	case errors.Is(err, player.ErrThumbNoURL):
-		response = "Did not find the thumbnail URL."
 	case errors.Is(err, youtube_search.ErrEmptyResponse):
 		response = "No matching results found"
 	case errors.Is(err, youtube_search.ErrRequest):
@@ -376,9 +347,4 @@ func handleError(err error, c *gumble.Client) bool {
 
 	c.Self.Channel.Send(response, false)
 	return false
-}
-
-// Concats and returns the added string and the track message
-func getAdditionResponse(t *player.Track) string {
-	return fmt.Sprintf("Added: %s", t.GetMessage())
 }

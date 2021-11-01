@@ -1,11 +1,8 @@
 package player
 
 import (
-	"bytes"
-	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -15,7 +12,6 @@ import (
 
 	"github.com/evris99/mumble-music-bot/youtube_search"
 	"github.com/kkdai/youtube/v2"
-	"golang.org/x/sync/errgroup"
 	"layeh.com/gumble/gumble"
 	"layeh.com/gumble/gumbleffmpeg"
 	_ "layeh.com/gumble/opus"
@@ -30,91 +26,9 @@ var (
 	ErrPlaying       = errors.New("the playlist is already playing")
 	ErrStopped       = errors.New("the playlist is already stopped")
 	ErrVolumeRange   = errors.New("the volume level is incorrect")
-	ErrThumbDownload = errors.New("could not get thumbnail")
-	ErrThumbNoURL    = errors.New("no URL found for thumbnail")
 	ErrEmptyPlaylist = errors.New("playlist empty")
+	ErrIncorrectURL  = errors.New("incorrect url")
 )
-
-type Thumbnail struct {
-	Data     []byte
-	MimeType string
-	URL      string
-}
-
-// Downloads the thumbnail and adds it to the data.
-// If the URL field is not set it throws an error
-func (t *Thumbnail) GetThumbnail() error {
-	if t.URL == "" {
-		return ErrThumbNoURL
-	}
-
-	resp, err := http.Get(t.URL)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return ErrThumbDownload
-	}
-	t.MimeType = resp.Header.Get("content-type")
-
-	buf := new(bytes.Buffer)
-	writer := base64.NewEncoder(base64.StdEncoding, buf)
-	_, err = io.Copy(writer, resp.Body)
-	if err != nil {
-		return err
-	}
-
-	t.Data = buf.Bytes()
-	return nil
-}
-
-type Track struct {
-	Stream    *gumbleffmpeg.Stream
-	Duration  time.Duration
-	StreamURL string
-	PublicURL string
-	Title     string
-	Artist    string
-	Thumbnail *Thumbnail
-}
-
-// Receives a youtube video and returns a track struct
-func getTrackFromVideo(client *youtube.Client, video *youtube.Video) (*Track, error) {
-	form, err := findBestFormat(video.Formats)
-	if err != nil {
-		return nil, err
-	}
-
-	url, err := client.GetStreamURL(video, form)
-	if err != nil {
-		return nil, err
-	}
-
-	track := &Track{
-		Title:     video.Title,
-		Artist:    video.Author,
-		Duration:  video.Duration,
-		StreamURL: url,
-		PublicURL: fmt.Sprintf("https://www.youtube.com/watch?v=%s", video.ID),
-		Thumbnail: &Thumbnail{URL: ""},
-	}
-	if len(video.Thumbnails) > 0 {
-		track.Thumbnail.URL = video.Thumbnails[0].URL
-	}
-
-	return track, nil
-}
-
-// Returns the string for displaying the track
-func (t *Track) GetMessage() string {
-	title := fmt.Sprintf("<h3 style=\"margin: 0px; padding: 0px;\"><a style=\"margin: 0px; padding: 0px;\" href=\"%s\">%s</a></h3>", t.PublicURL, t.Title)
-	artist := fmt.Sprintf("<h4 style=\"margin: 0px; padding: 0px;\"> by %s</h4>", t.Artist)
-	duration := fmt.Sprintf("%s<br>", formatDuration(t.Duration))
-	image := fmt.Sprintf("<img style=\"float: left; padding:0px;\"src=\"data:%s;base64,%s\"/><br>", t.Thumbnail.MimeType, string(t.Thumbnail.Data))
-	return fmt.Sprintf("%s%s%s%s", title, artist, duration, image)
-}
 
 type Player struct {
 	tracks       chan *Track
@@ -188,41 +102,23 @@ func (p *Player) Skip() error {
 
 // Add the song from the URL to the playlist
 // Returns the track that is added.
-func (p *Player) AddToQueue(c *gumble.Client, url *url.URL) (*Track, error) {
-	track, err := getURLTrack(url, c)
+func (p *Player) AddToQueue(c *gumble.Client, url *url.URL) ([]*Track, error) {
+	redirectURL, err := getRedirectURL(url)
 	if err != nil {
 		return nil, err
 	}
 
-	if err = track.Thumbnail.GetThumbnail(); err != nil {
-		return nil, err
-	}
-	p.SongList = append(p.SongList, track.Title)
-	p.tracks <- track
-	return track, nil
-}
-
-// Receives a youtube plalist URL, adds it to the queue and returns the number of tracks in it
-func (p *Player) AddPlaylist(c *gumble.Client, url *url.URL) (int, error) {
-	tracks, err := getPlaylistTracks(url, c)
+	tracks, err := getURLTracks(redirectURL, c)
 	if err != nil {
-		return 0, err
-	}
-	// Get thumbnails in parallel
-	wg := new(errgroup.Group)
-	for _, track := range tracks {
-		wg.Go(getThumbnailCallback(track))
-	}
-
-	if err := wg.Wait(); err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	for _, track := range tracks {
 		p.SongList = append(p.SongList, track.Title)
 		p.tracks <- track
 	}
-	return len(tracks), nil
+
+	return tracks, nil
 }
 
 // Get songs that are going to play next
@@ -255,7 +151,16 @@ func (p *Player) SearchAndAdd(c *gumble.Client, apiKey, query string) (*Track, e
 		return nil, err
 	}
 
-	return p.AddToQueue(c, parsedURL)
+	tracks, err := p.AddToQueue(c, parsedURL)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(tracks) != 1 {
+		return nil, ErrIncorrectURL
+	}
+
+	return tracks[0], nil
 }
 
 // Clears the tracks from the playlist
@@ -278,8 +183,7 @@ func (p *Player) GetCurrentSong() (string, error) {
 	currentTime := formatDuration(p.currentTrack.Stream.Elapsed())
 	totalTime := formatDuration(p.currentTrack.Duration)
 	progress := getProgressBar(p.currentTrack.Duration, p.currentTrack.Stream.Elapsed())
-	header := p.currentTrack.GetMessage()
-	return fmt.Sprintf("<h4>%s ▶ %s %s</h4>%s", currentTime, progress, totalTime, header), nil
+	return fmt.Sprintf("<h4>%s ▶ %s %s</h4>%v", currentTime, progress, totalTime, p.currentTrack), nil
 }
 
 // Returns the current volume in float (Range: 0 - 1)
@@ -342,13 +246,6 @@ func (p *Player) startPlaylist(c *gumble.Client) {
 	}
 }
 
-// Returns a callback function for getting a track's thumbnail
-func getThumbnailCallback(t *Track) func() error {
-	return func() error {
-		return t.Thumbnail.GetThumbnail()
-	}
-}
-
 // Receives an audio stream and a channel. It plays the stream
 // and send a message to the channel when it is finished.
 func playStream(s *gumbleffmpeg.Stream, finished chan bool) {
@@ -391,105 +288,50 @@ func getProgressBar(total, elapsed time.Duration) string {
 }
 
 // Receives a URL and returns an audio stream or an error
-func getURLTrack(u *url.URL, client *gumble.Client) (*Track, error) {
-	var track *Track
-	var err error
+func getURLTracks(u *url.URL, client *gumble.Client) ([]*Track, error) {
 	switch u.Host {
-	case "www.youtube.com", "youtu.be":
-		track, err = getYoutubeTrack(u)
+	case "www.youtube.com":
+		return getYoutubeTracks(client, u)
+	default:
+		return nil, ErrIncorrectURL
 	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	source := gumbleffmpeg.SourceFile(track.StreamURL)
-	track.Stream = gumbleffmpeg.New(client, source)
-	return track, nil
 }
 
 // Receives a youtube video URL and returns
 // the streaming URL or an error
-func getYoutubeTrack(u *url.URL) (*Track, error) {
+func getYoutubeTracks(c *gumble.Client, u *url.URL) ([]*Track, error) {
 	client := new(youtube.Client)
-	video, err := client.GetVideo(u.String())
-	if err != nil {
-		return nil, err
-	}
-
-	return getTrackFromVideo(client, video)
-}
-
-// Receives a youtube playlist URL and returns a slice of tracks or an error
-func getPlaylistTracks(u *url.URL, c *gumble.Client) ([]*Track, error) {
-	client := new(youtube.Client)
-	playlist, err := client.GetPlaylist(u.String())
-	if err != nil {
-		return nil, err
-	}
-
-	if len(playlist.Videos) == 0 {
-		return nil, ErrEmptyPlaylist
-	}
-
-	// Get tracks in parallel
-	counter := len(playlist.Videos)
-	trackChan := make(chan *Track)
-	errChan := make(chan error)
-	for _, entry := range playlist.Videos {
-		go getTrackStream(c, client, entry, trackChan, errChan)
-	}
-
-	tracks := make([]*Track, 0)
-	for counter > 0 {
-		select {
-		case track := <-trackChan:
-			tracks = append(tracks, track)
-			counter--
-		case err := <-errChan:
+	switch u.Path {
+	case "/watch":
+		video, err := client.GetVideo(u.String())
+		if err != nil {
 			return nil, err
 		}
-	}
 
-	return tracks, nil
+		track, err := YoutubeVideoToTrack(c, client, video)
+		return []*Track{track}, err
+	case "/playlist":
+		playlist, err := client.GetPlaylist(u.String())
+		if err != nil {
+			return nil, err
+		}
+
+		return YoutubePlaylistToTracks(c, client, playlist)
+	default:
+		return nil, ErrIncorrectURL
+	}
 }
 
-// Gets Tracks and send them through the trackChan channel
-func getTrackStream(mc *gumble.Client, yc *youtube.Client, entry *youtube.PlaylistEntry, trackChan chan<- *Track, errChan chan<- error) {
-	video, err := yc.VideoFromPlaylistEntry(entry)
+// Receives a url and returns the final redirection url
+func getRedirectURL(url *url.URL) (*url.URL, error) {
+	resp, err := http.Head(url.String())
 	if err != nil {
-		errChan <- err
-		return
+		return nil, err
 	}
 
-	track, err := getTrackFromVideo(yc, video)
-	if err != nil {
-		errChan <- err
-		return
+	if resp.StatusCode != http.StatusOK {
+		return nil, ErrIncorrectURL
 	}
 
-	source := gumbleffmpeg.SourceFile(track.StreamURL)
-	track.Stream = gumbleffmpeg.New(mc, source)
-	trackChan <- track
-}
-
-// Finds the best audio formats for a format list
-// and returns an error if no format is found
-func findBestFormat(formats youtube.FormatList) (*youtube.Format, error) {
-	f := formats.FindByItag(251)
-	if f != nil {
-		return f, nil
-	}
-
-	f = formats.FindByItag(250)
-	if f != nil {
-		return f, nil
-	}
-
-	f = formats.FindByItag(249)
-	if f != nil {
-		return f, nil
-	}
-
-	return nil, ErrNoFormat
+	return resp.Request.URL, nil
 }
