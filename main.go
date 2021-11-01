@@ -143,6 +143,7 @@ func getTLSConfig(c Config) (*tls.Config, error) {
 // Returns a function to handle the text message event
 func handleMessage(player *player.Player, config *Config) func(e *gumble.TextMessageEvent) {
 	return func(e *gumble.TextMessageEvent) {
+
 		message := strings.TrimSpace(e.Message)
 		if !strings.HasPrefix(message, config.Prefix) {
 			return
@@ -367,6 +368,8 @@ func handleError(err error, c *gumble.Client) bool {
 		response = "Could not find URL"
 	case errors.Is(err, ErrNoYoutubeAPIKey):
 		response = "The bot has not been configured to search youtube. Add a Youtube API key in the config."
+	case errors.Is(err, player.ErrEmptyPlaylist):
+		response = "The playlist has 0 videos or is non existant"
 	default:
 		response = err.Error()
 	}

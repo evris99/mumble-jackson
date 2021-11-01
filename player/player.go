@@ -32,6 +32,7 @@ var (
 	ErrVolumeRange   = errors.New("the volume level is incorrect")
 	ErrThumbDownload = errors.New("could not get thumbnail")
 	ErrThumbNoURL    = errors.New("no URL found for thumbnail")
+	ErrEmptyPlaylist = errors.New("playlist empty")
 )
 
 type Thumbnail struct {
@@ -108,12 +109,11 @@ func getTrackFromVideo(client *youtube.Client, video *youtube.Video) (*Track, er
 
 // Returns the string for displaying the track
 func (t *Track) GetMessage() string {
-	url := fmt.Sprintf("<a href=\"%[1]s\">%[1]s</a><br>", t.PublicURL)
 	title := fmt.Sprintf("<h3 style=\"margin: 0px; padding: 0px;\"><a style=\"margin: 0px; padding: 0px;\" href=\"%s\">%s</a></h3>", t.PublicURL, t.Title)
 	artist := fmt.Sprintf("<h4 style=\"margin: 0px; padding: 0px;\"> by %s</h4>", t.Artist)
 	duration := fmt.Sprintf("%s<br>", formatDuration(t.Duration))
 	image := fmt.Sprintf("<img style=\"float: left; padding:0px;\"src=\"data:%s;base64,%s\"/><br>", t.Thumbnail.MimeType, string(t.Thumbnail.Data))
-	return fmt.Sprintf("%s%s%s%s%s", url, title, artist, duration, image)
+	return fmt.Sprintf("%s%s%s%s", title, artist, duration, image)
 }
 
 type Player struct {
@@ -334,6 +334,8 @@ func (p *Player) startPlaylist(c *gumble.Client) {
 			}
 		}
 
+		p.currentTrack = nil
+
 		if stop {
 			break
 		}
@@ -424,6 +426,10 @@ func getPlaylistTracks(u *url.URL, c *gumble.Client) ([]*Track, error) {
 	playlist, err := client.GetPlaylist(u.String())
 	if err != nil {
 		return nil, err
+	}
+
+	if len(playlist.Videos) == 0 {
+		return nil, ErrEmptyPlaylist
 	}
 
 	// Get tracks in parallel
