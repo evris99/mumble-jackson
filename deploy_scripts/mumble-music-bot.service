@@ -1,0 +1,19 @@
+# A systemd service file for mumble music bot
+[Unit]
+Description=A music bot for mumble
+After=network-online.target
+Wants=network-online.target systemd-networkd-wait-online.service
+
+StartLimitIntervalSec=500
+StartLimitBurst=5
+
+[Service]
+Type=simple
+# Change to the location of your executable
+ExecStart=/usr/bin/mumble-music-bot -c /etc/mumble-music-bot/configuration.toml
+# Restart on failure
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
