@@ -1,9 +1,10 @@
-module github.com/evris99/mumble-music-bot
+module github.com/evris99/mumble-jackson
 
 go 1.17
 
 require (
 	github.com/BurntSushi/toml v0.4.1
+	github.com/evris99/mumble-music-bot v0.0.0-20211106223543-cd8e8d2a59e9
 	github.com/kkdai/youtube/v2 v2.7.4
 	layeh.com/gumble v0.0.0-20200818122324-146f9205029b
 	mvdan.cc/xurls/v2 v2.3.0
