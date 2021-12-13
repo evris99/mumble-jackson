@@ -21,7 +21,7 @@ default_volume = 60
 # For information about getting an API key visit https://developers.google.com/youtube/v3/docs
 youtube_api_key = ""
 
-# Whether to use a cerificate and where are the pem files
+# Whether to use a certificate and where are the pem files
 [certificate]
 use_certificate = true
 certificate_file_path = "./certs/cert.pem"
