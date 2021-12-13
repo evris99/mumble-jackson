@@ -30,14 +30,14 @@ docker run mumble-jackson
 
 ### Linux
 
-First we need to install the dependencies. If you are in a Debian-based distro run:
+To compile from source you need to have go installed.
+First you need to install the dependencies. If you are in a Debian-based distro run:
 
 ```
 sudo apt install libopus-dev gcc ffmpeg
 ```
 
-Next we install go from https://golang.org/dl/.
-Then we build the executable:
+Then to build the executable run:
 
 ```
 git clone https://github.com/evris99/mumble-jackson.git
@@ -53,7 +53,7 @@ cp configuration.example.toml configuration.toml
 
 Then make the necessary changes to the file.
 
-To run execute:
+To start execute:
 
 ```
 ./mumble-jackson -c configuration.toml
