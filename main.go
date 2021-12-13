@@ -29,17 +29,16 @@ var (
 )
 
 const helpmessage string = `<h2>Usage</h2><br>
-<b>%[1]sinfo</b>: Shows current song info.<br>
-<b>%[1]sstart</b>: Starts the playlist.<br>
+<b>%[1]sinfo | %[1]scurrent | %[1]scur</b>: Shows current song info.<br>
+<b>%[1]sstart | %[1]splay</b>: Starts the playlist.<br>
 <b>%[1]sstop</b>: Stops the playlist.<br>
-<b>%[1]sadd $URL</b>: Add the youtube URL to the playlist.<br>
+<b>%[1]sadd | %[1]surl $URL</b>: Add the youtube URL of a song or a playlist to the queue.<br>
 <b>%[1]ssearch $QUERY</b>: Searches and adds the song to the playlist.<br>
-<b>%[1]splaylist $URL</b>: Add the playlist from the given URL to the queue.<br>
-<b>%[1]sskip</b>: Skips a track from the playlist.<br>
+<b>%[1]sskip | %[1]snext</b>: Skips a track from the playlist.<br>
 <b>%[1]sclear</b>: Clears the playlist.<br>
-<b>%[1]svol $NUM</b>: Sets the volume to the specified number. The number must be between 0-100.<br>
+<b>%[1]svol | %[1]svolume $NUM</b>: Sets the volume to the specified number. The number must be between 0-100.<br>
 <b>%[1]shelp</b>: Shows this message.<br>
-<b>%[1]slist</b>: Shows list of next songs.<br>`
+<b>%[1]slist | %[1]squeue</b>: Shows list of next songs.<br>`
 
 // The configuration for the TLS certificates
 type CertConfig struct {
