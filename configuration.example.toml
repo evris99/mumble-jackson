@@ -4,6 +4,9 @@ address = "localhost"
 # The Mumble server's port
 port = 64738
 
+# The password for the Mumble server
+password = ""
+
 # The username of the bot
 username = "MusicBot"
 

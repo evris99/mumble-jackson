@@ -52,6 +52,7 @@ type Config struct {
 	Address           string      `toml:"address"`
 	Port              uint16      `toml:"port"`
 	Username          string      `toml:"username"`
+	Password          string      `toml:"password"`
 	Prefix            string      `toml:"command_prefix"`
 	VerifyCertificate bool        `toml:"verify_server_certificate"`
 	CertConf          *CertConfig `toml:"certificate"`
@@ -67,6 +68,7 @@ func main() {
 
 	gumbleConf := gumble.NewConfig()
 	gumbleConf.Username = config.Username
+	gumbleConf.Password = config.Password
 
 	player := player.New(config.DefaultVolume)
 	gumbleConf.Attach(gumbleutil.Listener{
